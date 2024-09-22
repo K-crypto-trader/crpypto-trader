@@ -1,6 +1,7 @@
 package com.crypto_trader.api_server.domain;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import lombok.Builder;
 import lombok.Getter;
 
 public class Ticker {
@@ -23,6 +24,7 @@ public class Ticker {
 
     public Ticker() {}
 
+    @Builder
     public Ticker(final String market, final double tradePrice, final double accTradePrice24h, final double signedChangePrice, final double signedChangeRate, final double highPrice, final double lowPrice, final double accTradeVolume24h) {
         this.market = market;
         this.tradePrice = tradePrice;

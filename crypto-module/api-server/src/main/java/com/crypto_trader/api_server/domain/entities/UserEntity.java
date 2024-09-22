@@ -1,6 +1,7 @@
 package com.crypto_trader.api_server.domain.entities;
 
 import jakarta.persistence.*;
+import lombok.Builder;
 import lombok.Getter;
 
 import java.util.ArrayList;

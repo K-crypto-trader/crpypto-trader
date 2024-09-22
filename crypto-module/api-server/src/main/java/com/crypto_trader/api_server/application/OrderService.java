@@ -78,7 +78,7 @@ public class OrderService {
         return new OrderResponseDto();
     }
 
-    @Transactional
+    @Transactional(readOnly = true)
     public List<Order> getOrderToProcess(String market, double tradePrice) {
         return orderRepository.findByMarket(market).stream()
                 .filter(order -> {
@@ -92,30 +92,13 @@ public class OrderService {
     @Transactional
     @Lock(value = LockModeType.PESSIMISTIC_WRITE)
     public void processOrderWithLock(Order order) {
-        Order currentOrder = orderRepository.findById(order.getId()).orElseThrow(() -> new RuntimeException("Order not found"));
-
-        // 상태가 변경되었는지 재검사
-        if (currentOrder.getState() == OrderState.CREATED) {
-            currentOrder.execution();
-        } else {
-            throw new RuntimeException("Order already processed or invalid state");
-        }
+        order.execution();
+        orderRepository.saveAndFlush(order);
     }
 
-    @Transactional
-    @Lock(value = LockModeType.PESSIMISTIC_READ)
-    public void processOrderWithReadLock(Order order) throws InterruptedException {
-        Order currentOrder = orderRepository.findById(order.getId()).orElseThrow(() -> new RuntimeException("Order not found"));
-
-        Thread.sleep(1000);
-        // 상태가 변경되었는지 재검사
-        if (currentOrder.getState() == OrderState.CREATED) {
-            currentOrder.execution();
-        } else {
-            throw new RuntimeException("Order already processed or invalid state");
-        }
-    }
-
+    /*
+     * 성능 TEST 용 함수
+     * */
     @Transactional
     @Lock(value = LockModeType.PESSIMISTIC_WRITE)
     public void beforeProcessTicker(Ticker ticker) {
@@ -129,5 +112,17 @@ public class OrderService {
                             (order.getSide() == OrderSide.BID) ? tradePrice <= price : tradePrice >= price;
                 })
                 .forEach(Order::execution);
+    }
+
+    @Transactional
+    @Lock(value = LockModeType.PESSIMISTIC_READ)
+    public void processOrderWithReadLock(Order order) throws InterruptedException {
+        Thread.sleep(1000);
+        // 상태가 변경되었는지 재검사
+        if (order.getState() == OrderState.CREATED) {
+            order.execution();
+        } else {
+            throw new RuntimeException("Order already processed or invalid state");
+        }
     }
 }
