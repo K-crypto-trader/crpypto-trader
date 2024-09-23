@@ -127,47 +127,6 @@ public class OrderProcessingPerformanceTest {
         assertThat(findRandomOrder.size()).isEqualTo(1000);
     }
 
-    @Test
-    public void testEnhancedProcessTicker() throws InterruptedException {
-
-        List<Order> findRandomOrder = new ArrayList<>();
-
-        Thread processingThread = new Thread(() -> {
-            mockOrders.forEach(order -> {
-                orderService.processOrderWithLock(order);  // 쓰기 Lock 사용
-            });
-        });
-
-        // 랜덤 조회 쓰레드 생성
-        Thread randomQueryThread = new Thread(() -> {
-            for (int i = 0; i < 100; i++) {
-                // 랜덤으로 10개 주문 조회
-                List<Long> randomOrderIds = getRandomOrderIds(mockOrders, 10);
-                randomOrderIds.forEach(orderId -> {
-                    Order queriedOrder = orderRepository.findById(orderId)
-                            .orElseThrow(() -> new RuntimeException("Order not found"));
-                    findRandomOrder.add(queriedOrder);
-                });
-            }
-        });
-
-        long startTime = System.currentTimeMillis();
-        // 처리 시간 계산
-        processingThread.start();
-        randomQueryThread.start();
-        processingThread.join();
-        randomQueryThread.join();
-        long duration = System.currentTimeMillis() - startTime;  // 밀리초 단위
-        System.out.println("걸린 시간: "+duration);
-
-        List<Order> btc = orderRepository.findByMarket("BTC");
-        btc.forEach(order -> {
-            assertThat(order.getState()).isEqualTo(OrderState.COMPLETED);
-        });
-
-        assertThat(findRandomOrder.size()).isEqualTo(1000);
-    }
-
     // 랜덤으로 Order 리스트에서 n개의 Order ID를 선택하는 메서드
     private List<Long> getRandomOrderIds(List<Order> orders, int n) {
         Random random = new Random();

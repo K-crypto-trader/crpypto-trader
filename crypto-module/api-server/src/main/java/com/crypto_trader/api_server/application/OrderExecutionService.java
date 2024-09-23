@@ -12,6 +12,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import jakarta.persistence.LockModeType;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.event.EventListener;
@@ -26,6 +27,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+@Slf4j
 @Service
 public class OrderExecutionService {
 
@@ -113,7 +115,10 @@ public class OrderExecutionService {
     @EventListener
     public void processTicker(TickerProcessingEvent event) {
         Ticker ticker = event.getTicker();
-        List<Order> ordersToProcess = orderService.getOrderToProcess(ticker.getMarket(), ticker.getTradePrice());
-        ordersToProcess.forEach(orderService::processOrderWithLock);
+        try{
+            orderService.processOrdersInParallel(ticker.getMarket(), ticker.getTradePrice());
+        }catch (Exception e) {
+            throw new RuntimeException("Exception occurred while processing orders", e.getCause());
+        }
     }
 }

@@ -13,6 +13,7 @@ import com.crypto_trader.api_server.application.dto.OrderResponseDto;
 import com.crypto_trader.api_server.domain.events.TickerProcessingEvent;
 import com.crypto_trader.api_server.infra.OrderRepository;
 import jakarta.persistence.LockModeType;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.event.EventListener;
 import org.springframework.data.jpa.repository.Lock;
@@ -20,15 +21,22 @@ import org.springframework.data.jpa.repository.QueryHints;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.*;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
+@Slf4j
 @Service
 public class OrderService {
 
     private final OrderRepository orderRepository;
 
-    @Autowired
+    private final ExecutorService executorService = Executors.newFixedThreadPool(10);
+    private final int ORDER_BATCH_SIZE = 1000;
+
     public OrderService(OrderRepository orderRepository) {
         this.orderRepository = orderRepository;
     }
@@ -57,11 +65,10 @@ public class OrderService {
     }
 
     @Transactional
-    @Lock(value = LockModeType.PESSIMISTIC_WRITE)
     public OrderResponseDto cancelOrder(PrincipalUser principalUser, OrderCancelRequestDto dto) {
         UserEntity user = principalUser.getUser();
 
-        Order order = orderRepository.findById(dto.getOrderId())
+        Order order = orderRepository.findByIdWithLock(dto.getOrderId())
                 .orElseThrow(() -> new IllegalArgumentException("Order not found"));
 
         if (!Objects.equals(order.getUser().getId(), user.getId()))
@@ -86,21 +93,55 @@ public class OrderService {
                     return order.getState() == OrderState.CREATED &&
                             ((order.getSide() == OrderSide.BID) ? tradePrice <= price : tradePrice >= price);
                 })
-                .toList();
+                .collect(Collectors.toList());
     }
 
     @Transactional
-    @Lock(value = LockModeType.PESSIMISTIC_WRITE)
-    public void processOrderWithLock(Order order) {
-        order.execution();
-        orderRepository.saveAndFlush(order);
+    public void processOrdersInParallel(String market, double tradePrice) throws Exception {
+        List<Order> ordersToProcess = getOrderToProcess(market, tradePrice);
+        List<List<Order>> partitionedOrders = partitionList(ordersToProcess, ORDER_BATCH_SIZE);
+
+        List<Future<Void>> futures = new ArrayList<>();
+        for (List<Order> orderBatch : partitionedOrders) {
+            futures.add(executorService.submit(() -> {
+                processOrderBatchWithLock(orderBatch);
+                return null;
+            }));
+        }
+
+        for (Future<Void> future : futures) {
+            future.get();
+        }
+
+        executorService.shutdown();
+        if (!executorService.awaitTermination(60, TimeUnit.SECONDS)) {
+            executorService.shutdownNow();
+        }
+    }
+
+    // 1000개 단위로 리스트 나누기
+    private <T> List<List<T>> partitionList(List<T> list, int size) {
+        return IntStream.range(0, (list.size() + size - 1) / size)
+                .mapToObj(i -> list.subList(i * size, Math.min((i + 1) * size, list.size())))
+                .collect(Collectors.toList());
+    }
+
+    // 비관적 락을 걸고 주문 처리하는 메서드
+    @Transactional
+    public void processOrderBatchWithLock(List<Order> orderBatch) {
+        List<Long> orderIds = orderBatch.stream().map(Order::getId).collect(Collectors.toList());
+        List<Order> lockedOrders = orderRepository.findOrdersWithLock(orderIds);
+
+        for (Order order : lockedOrders) {
+            order.execution();
+            orderRepository.saveAndFlush(order);
+        }
     }
 
     /*
      * 성능 TEST 용 함수
      * */
     @Transactional
-    @Lock(value = LockModeType.PESSIMISTIC_WRITE)
     public void beforeProcessTicker(Ticker ticker) {
         String market = ticker.getMarket();
         double tradePrice = ticker.getTradePrice();
@@ -112,17 +153,5 @@ public class OrderService {
                             (order.getSide() == OrderSide.BID) ? tradePrice <= price : tradePrice >= price;
                 })
                 .forEach(Order::execution);
-    }
-
-    @Transactional
-    @Lock(value = LockModeType.PESSIMISTIC_READ)
-    public void processOrderWithReadLock(Order order) throws InterruptedException {
-        Thread.sleep(1000);
-        // 상태가 변경되었는지 재검사
-        if (order.getState() == OrderState.CREATED) {
-            order.execution();
-        } else {
-            throw new RuntimeException("Order already processed or invalid state");
-        }
     }
 }

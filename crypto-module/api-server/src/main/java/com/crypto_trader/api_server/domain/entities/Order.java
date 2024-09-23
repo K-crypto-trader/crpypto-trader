@@ -85,6 +85,9 @@ public class Order {
      * This method must be called within a transactional context.
      */
     public void execution() {
+        if(this.state == OrderState.COMPLETED) {
+            throw new RuntimeException("Order already processed or invalid state");
+        }
         if (side == OrderSide.BID) { // 매수 체결
             bid();
         } else {
