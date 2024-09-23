@@ -11,7 +11,9 @@ import com.crypto_trader.api_server.domain.entities.UserEntity;
 import com.crypto_trader.api_server.application.dto.OrderCreateRequestDto;
 import com.crypto_trader.api_server.application.dto.OrderResponseDto;
 import com.crypto_trader.api_server.domain.events.TickerProcessingEvent;
+import com.crypto_trader.api_server.global.utils.ListUtils;
 import com.crypto_trader.api_server.infra.OrderRepository;
+import jakarta.annotation.PreDestroy;
 import jakarta.persistence.LockModeType;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,12 +35,20 @@ import java.util.stream.IntStream;
 public class OrderService {
 
     private final OrderRepository orderRepository;
+    private final ListUtils listUtils;
 
     private final ExecutorService executorService = Executors.newFixedThreadPool(10);
     private final int ORDER_BATCH_SIZE = 1000;
 
-    public OrderService(OrderRepository orderRepository) {
+    public OrderService(OrderRepository orderRepository,
+                        ListUtils listUtils) {
         this.orderRepository = orderRepository;
+        this.listUtils = listUtils;
+    }
+
+    @PreDestroy
+    public void shutdownExecutor() {
+        executorService.shutdown();
     }
 
     @Transactional
@@ -99,7 +109,7 @@ public class OrderService {
     @Transactional
     public void processOrdersInParallel(String market, double tradePrice) throws Exception {
         List<Order> ordersToProcess = getOrderToProcess(market, tradePrice);
-        List<List<Order>> partitionedOrders = partitionList(ordersToProcess, ORDER_BATCH_SIZE);
+        List<List<Order>> partitionedOrders = listUtils.partitionList(ordersToProcess, ORDER_BATCH_SIZE);
 
         List<Future<Void>> futures = new ArrayList<>();
         for (List<Order> orderBatch : partitionedOrders) {
@@ -113,17 +123,9 @@ public class OrderService {
             future.get();
         }
 
-        executorService.shutdown();
         if (!executorService.awaitTermination(60, TimeUnit.SECONDS)) {
-            executorService.shutdownNow();
+            log.warn("Some tasks didn't finish within 60 seconds");
         }
-    }
-
-    // 1000개 단위로 리스트 나누기
-    private <T> List<List<T>> partitionList(List<T> list, int size) {
-        return IntStream.range(0, (list.size() + size - 1) / size)
-                .mapToObj(i -> list.subList(i * size, Math.min((i + 1) * size, list.size())))
-                .collect(Collectors.toList());
     }
 
     // 비관적 락을 걸고 주문 처리하는 메서드
