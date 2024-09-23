@@ -4,6 +4,7 @@ import com.crypto_trader.scheduler.domain.Market;
 import com.crypto_trader.scheduler.domain.event.MarketsUpdateEvent;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.redis.core.ReactiveRedisTemplate;
@@ -14,6 +15,7 @@ import java.util.stream.Collectors;
 
 import static com.crypto_trader.scheduler.global.constant.RedisConst.MARKET;
 
+@Slf4j
 @Repository
 public class SimpleMarketRepository {
 
@@ -43,6 +45,7 @@ public class SimpleMarketRepository {
         markets.putAll(newMarkets);
 
         if (isModified) {
+            log.debug("Renewal Market");
             try {
                 redisTemplate.opsForValue()
                         .set(MARKET, objectMapper.writeValueAsString(markets.keySet()))

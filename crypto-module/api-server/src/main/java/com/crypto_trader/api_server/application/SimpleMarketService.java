@@ -13,7 +13,6 @@ public class SimpleMarketService {
 
     private final SimpleMarketRepository marketRepository;
 
-    @Autowired
     public SimpleMarketService(SimpleMarketRepository marketRepository) {
         this.marketRepository = marketRepository;
     }

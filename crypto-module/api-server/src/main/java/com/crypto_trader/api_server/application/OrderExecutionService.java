@@ -26,6 +26,7 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Slf4j
 @Service
@@ -55,11 +56,15 @@ public class OrderExecutionService {
 
     @PostConstruct
     public void init() {
+
         // 시장 코드 업데이트에 따른 구독 설정
         marketRepository.marketCodesUpdates().subscribe(this::updateMarketSubscriptions);
 
         // Ticker 채널 구독 설정
-        tickerRepository.getChannel().subscribe(value -> handleTickerMessage(value.getMessage()));
+        tickerRepository.getChannel().subscribe(value -> {
+            log.debug("value: "+value);
+            handleTickerMessage(value.getMessage());
+        });
     }
 
     /**
@@ -74,7 +79,10 @@ public class OrderExecutionService {
 
             Disposable subscription = sink.asFlux()
                     .sampleFirst(Duration.ofSeconds(1))  // 1초에 한 번 처리
-                    .subscribe(ticker -> eventPublisher.publishEvent(new TickerProcessingEvent(this, ticker)));
+                    .subscribe(ticker -> {
+                        log.debug("ticker: {}", ticker.getMarket());
+                        eventPublisher.publishEvent(new TickerProcessingEvent(this, ticker));
+                    });
 
             subscriptionMap.put(code, subscription);
         }
@@ -94,6 +102,7 @@ public class OrderExecutionService {
      */
     private void handleTickerMessage(String message) {
         try {
+            log.debug("message: "+message);
             Ticker ticker = objectMapper.readValue(message, Ticker.class);
             tickerRepository.save(ticker);
 
@@ -115,6 +124,7 @@ public class OrderExecutionService {
     @EventListener
     public void processTicker(TickerProcessingEvent event) {
         Ticker ticker = event.getTicker();
+        log.debug("ticker market: {}", ticker.getMarket());
         try{
             orderService.processOrdersInParallel(ticker.getMarket(), ticker.getTradePrice());
         }catch (Exception e) {

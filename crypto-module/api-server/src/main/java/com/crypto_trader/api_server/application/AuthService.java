@@ -21,7 +21,6 @@ public class AuthService {
     private final UserEntityRepository userEntityRepository;
     private final JwtUtil jwtUtil;
 
-    @Autowired
     public AuthService(UserEntityRepository userEntityRepository, JwtUtil jwtUtil) {
         this.userEntityRepository = userEntityRepository;
         this.jwtUtil = jwtUtil;

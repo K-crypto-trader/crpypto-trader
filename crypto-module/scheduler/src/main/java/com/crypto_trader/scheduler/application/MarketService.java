@@ -2,6 +2,7 @@ package com.crypto_trader.scheduler.application;
 
 import com.crypto_trader.scheduler.domain.Market;
 import com.crypto_trader.scheduler.infra.SimpleMarketRepository;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpMethod;
@@ -12,6 +13,7 @@ import org.yaml.snakeyaml.error.Mark;
 
 import java.util.List;
 
+@Slf4j
 @Service
 public class MarketService {
 
@@ -38,6 +40,8 @@ public class MarketService {
 
         List<Market> newMarketList = responseEntity.getBody();
         assert newMarketList != null;
+
+        log.debug("Renewal Market Start {}", newMarketList.size());
 
         simpleMarketRepository.saveMarkets(newMarketList);
     }
